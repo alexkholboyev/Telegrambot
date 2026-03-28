@@ -8,17 +8,17 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
 
-# ====== CONFIG ======
+# ===== CONFIG =====
 TOKEN = "8660534874:AAG-qTma8aY8bfOywi7BHLQdYZC8xWiGkx0"
 ADMIN_IDS = [5932847351]
 COOLDOWN_HOURS = 1
 
-# ====== BOT & FSM ======
+# ===== BOT & FSM =====
 storage = MemoryStorage()
 bot = Bot(token=TOKEN)
 dp = Dispatcher(storage=storage)
 
-# ====== DATABASE ======
+# ===== DATABASE =====
 conn = sqlite3.connect("wordengine.db", check_same_thread=False)
 cursor = conn.cursor()
 
@@ -31,14 +31,16 @@ cursor.execute("""CREATE TABLE IF NOT EXISTS users (
 
 cursor.execute("""CREATE TABLE IF NOT EXISTS sections (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT UNIQUE
+    name TEXT UNIQUE,
+    quiz_type TEXT DEFAULT 'translation'
 )""")
 
 cursor.execute("""CREATE TABLE IF NOT EXISTS words (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     section_id INTEGER,
-    word TEXT,
-    translation TEXT,
+    eng TEXT,
+    uz TEXT,
+    example TEXT,
     FOREIGN KEY(section_id) REFERENCES sections(id)
 )""")
 
@@ -53,13 +55,13 @@ cursor.execute("""CREATE TABLE IF NOT EXISTS attempts (
 
 conn.commit()
 
-# ====== HELPERS ======
+# ===== HELPERS =====
 def get_sections():
-    cursor.execute("SELECT id, name FROM sections ORDER BY id")
+    cursor.execute("SELECT id, name, quiz_type FROM sections ORDER BY id")
     return cursor.fetchall()
 
 def get_words(section_id):
-    cursor.execute("SELECT word, translation FROM words WHERE section_id=?", (section_id,))
+    cursor.execute("SELECT eng, uz, example FROM words WHERE section_id=?", (section_id,))
     return cursor.fetchall()
 
 def can_take_test(user_id: int) -> bool:
@@ -82,6 +84,7 @@ def update_streak(user_id: int):
     today = datetime.date.today()
     cursor.execute("SELECT streak, last_streak_date FROM users WHERE user_id=?", (user_id,))
     row = cursor.fetchone()
+    
     if not row:
         cursor.execute("INSERT INTO users (user_id, streak, last_streak_date) VALUES (?, 1, ?)", (user_id, today))
     else:
@@ -93,7 +96,8 @@ def update_streak(user_id: int):
             streak += 1
         else:
             streak = 1
-        cursor.execute("UPDATE users SET streak=?, last_streak_date=? WHERE user_id=?", (streak, today, user_id))
+        cursor.execute("UPDATE users SET streak=?, last_streak_date=? WHERE user_id=?", 
+                      (streak, today, user_id))
     conn.commit()
 
 def get_current_streak(user_id: int) -> int:
@@ -101,7 +105,7 @@ def get_current_streak(user_id: int) -> int:
     row = cursor.fetchone()
     return row[0] if row else 0
 
-# ====== FSM ======
+# ===== FSM STATES =====
 class TestStates(StatesGroup):
     waiting_section = State()
     waiting_answer = State()
@@ -110,53 +114,40 @@ class AdminStates(StatesGroup):
     waiting_new_section = State()
     waiting_section_for_word = State()
     waiting_bulk_words = State()
-    waiting_broadcast_msg = State()
-    waiting_broadcast_target = State()
+    waiting_quiz_type_section = State()
+    waiting_quiz_type = State()
+    sending_broadcast = State()
+    selecting_user = State()
 
-# ====== KEYBOARDS ======
-def build_sections_kb():
-    sections = get_sections()
-    kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    for s in sections:
-        kb.add(types.KeyboardButton(f"{s[1]} ({len(get_words(s[0]))} ta so‘z)"))
-    return kb
+# ===== KEYBOARDS =====
+main_kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
+main_kb.add("Start Test", "My Stats")
+main_kb.add("Leaderboard", "Weak Words")
 
-main_kb = types.ReplyKeyboardMarkup(
-    keyboard=[
-        [types.KeyboardButton(text="Start Test")],
-        [types.KeyboardButton(text="My Stats")],
-        [types.KeyboardButton(text="Leaderboard")],
-        [types.KeyboardButton(text="Weak Words")],
-        [types.KeyboardButton(text="Admin Panel")]
-    ],
-    resize_keyboard=True
-)
+admin_kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
+admin_kb.add("Add Section", "Add Words Bulk")
+admin_kb.add("Set Quiz Type", "Send Broadcast")
+admin_kb.add("View All Stats", "Back to Main")
 
-admin_kb = types.ReplyKeyboardMarkup(
-    keyboard=[
-        [types.KeyboardButton(text="Add Section")],
-        [types.KeyboardButton(text="Add Words Bulk")],
-        [types.KeyboardButton(text="View All Users Stats")],
-        [types.KeyboardButton(text="Broadcast Message")],
-        [types.KeyboardButton(text="Back to Main")],
-    ],
-    resize_keyboard=True
-)
-
-# ====== START ======
+# ===== START & HELP =====
 @dp.message(F.text == "/start")
 async def start(msg: types.Message):
-    await msg.answer("🎉 WordEngine ga xush kelibsiz!\nHar kuni o‘rganing va streakni oshiring!", reply_markup=main_kb)
+    await msg.answer("🎉 <b>WordEngine</b> ga xush kelibsiz!\nHar kuni o‘rganing va streakni oshiring!", 
+                     parse_mode="HTML", reply_markup=main_kb)
 
-# ====== ADMIN PANEL ======
-@dp.message(F.text == "Admin Panel")
+@dp.message(F.text == "/help")
+async def help_cmd(msg: types.Message):
+    await msg.answer("/start - Boshlash\n/admin - Admin panel\n/help - Yordam")
+
+# ===== ADMIN PANEL =====
+@dp.message(F.text == "/admin")
 async def admin_panel(msg: types.Message):
     if msg.from_user.id not in ADMIN_IDS: return
-    await msg.answer("👨‍💻 Admin Panel", reply_markup=admin_kb)
+    await msg.answer("👨‍💻 <b>Admin panel</b>", parse_mode="HTML", reply_markup=admin_kb)
 
+# --- Section Qo‘shish ---
 @dp.message(F.text == "Add Section")
 async def add_section(msg: types.Message, state: FSMContext):
-    if msg.from_user.id not in ADMIN_IDS: return
     await msg.answer("Yangi section nomini yozing:")
     await state.set_state(AdminStates.waiting_new_section)
 
@@ -166,28 +157,28 @@ async def save_section(msg: types.Message, state: FSMContext):
     try:
         cursor.execute("INSERT INTO sections (name) VALUES (?)", (name,))
         conn.commit()
-        await msg.answer(f"✅ Section qo‘shildi: {name}")
+        await msg.answer(f"✅ Section qo‘shildi: <b>{name}</b>", parse_mode="HTML")
     except sqlite3.IntegrityError:
-        await msg.answer("❌ Bunday nomdagi section mavjud.")
+        await msg.answer("❌ Bunday nomdagi section allaqachon mavjud.")
     await state.clear()
 
+# --- So‘zlarni bulk qo‘shish ---
 @dp.message(F.text == "Add Words Bulk")
-async def add_words_bulk_start(msg: types.Message, state: FSMContext):
-    if msg.from_user.id not in ADMIN_IDS: return
+async def add_words_bulk(msg: types.Message, state: FSMContext):
     sections = get_sections()
     if not sections:
-        await msg.answer("❌ Avval section qo‘shing!")
+        await msg.answer("Avval section qo‘shing!")
         return
-    text = "Qaysi sectionga so‘zlar qo‘shilsin?\n" + "\n".join([f"{s[0]}: {s[1]}" for s in sections])
+    text = "Qaysi sectionga so‘z qo‘shmoqchisiz?\n" + "\n".join([f"{s[0]}: {s[1]}" for s in sections])
     await msg.answer(text + "\nSection ID raqamini yozing:")
     await state.set_state(AdminStates.waiting_section_for_word)
 
 @dp.message(AdminStates.waiting_section_for_word)
-async def process_section_for_bulk(msg: types.Message, state: FSMContext):
+async def process_section_bulk(msg: types.Message, state: FSMContext):
     try:
         sid = int(msg.text.strip())
         await state.update_data(section_id=sid)
-        await msg.answer("So‘zlarni kiriting (har biri yangi qatorda, format: inglizcha-tarjimasi):")
+        await msg.answer("So‘zlarni kiriting (har biri yangi qatorda) format: inglizcha-uzbekcha\nMasalan:\nApple-olma\nChair-stul")
         await state.set_state(AdminStates.waiting_bulk_words)
     except:
         await msg.answer("❌ Noto‘g‘ri ID!")
@@ -197,103 +188,85 @@ async def save_bulk_words(msg: types.Message, state: FSMContext):
     data = await state.get_data()
     sid = data['section_id']
     lines = msg.text.strip().split("\n")
-    count = 0
+    added = 0
     for line in lines:
-        if "-" in line:
-            eng, uzb = line.split("-", 1)
-            cursor.execute("INSERT INTO words (section_id, word, translation) VALUES (?, ?, ?)",
-                           (sid, eng.strip(), uzb.strip()))
-            count += 1
+        if "-" not in line:
+            continue
+        eng, uz = line.split("-", 1)
+        eng, uz = eng.strip(), uz.strip()
+        if eng and uz:
+            cursor.execute("INSERT INTO words (section_id, eng, uz) VALUES (?,?,?)", (sid, eng, uz))
+            added += 1
     conn.commit()
-    await msg.answer(f"✅ {count} ta so‘z qo‘shildi!")
+    await msg.answer(f"✅ {added} ta so‘z qo‘shildi.")
     await state.clear()
 
-# ====== VIEW USERS STATS ======
-@dp.message(F.text == "View All Users Stats")
-async def view_all_users(msg: types.Message):
-    if msg.from_user.id not in ADMIN_IDS: return
-    cursor.execute("SELECT user_id FROM users")
-    users = cursor.fetchall()
-    text = ""
-    for u in users:
-        uid = u[0]
-        streak = get_current_streak(uid)
-        cursor.execute("SELECT COUNT(*), ROUND(AVG(score*100.0/total),1) FROM attempts WHERE user_id=?", (uid,))
-        row = cursor.fetchone()
-        tests = row[0] if row else 0
-        avg = row[1] if row else 0
-        text += f"User {uid}: {tests} test, avg {avg}%, streak {streak}\n"
-    await msg.answer(text or "Hozircha foydalanuvchilar yo‘q.")
+# --- Quiz turi ---
+@dp.message(F.text == "Set Quiz Type")
+async def set_quiz_type_start(msg: types.Message, state: FSMContext):
+    sections = get_sections()
+    if not sections:
+        await msg.answer("Sectionlar yo‘q.")
+        return
+    text = "Qaysi section uchun quiz turini o‘zgartirmoqchisiz?\n" + "\n".join([f"{s[0]}: {s[1]}" for s in sections])
+    await msg.answer(text + "\nSection ID raqamini yozing:")
+    await state.set_state(AdminStates.waiting_quiz_type_section)
 
-# ====== BROADCAST ======
-@dp.message(F.text == "Broadcast Message")
-async def broadcast_start(msg: types.Message, state: FSMContext):
-    if msg.from_user.id not in ADMIN_IDS: return
-    await msg.answer("📢 Yuboriladigan xabarni yozing:")
-    await state.set_state(AdminStates.waiting_broadcast_msg)
+@dp.message(AdminStates.waiting_quiz_type_section)
+async def process_quiz_type_section(msg: types.Message, state: FSMContext):
+    try:
+        sid = int(msg.text.strip())
+        await state.update_data(section_id=sid)
+        await msg.answer("Quiz turini tanlang:\n1. translation\n2. MCQ\nRaqam yozing:")
+        await state.set_state(AdminStates.waiting_quiz_type)
+    except:
+        await msg.answer("❌ Noto‘g‘ri ID!")
 
-@dp.message(AdminStates.waiting_broadcast_msg)
-async def broadcast_target(msg: types.Message, state: FSMContext):
-    await state.update_data(message_text=msg.text.strip())
-    await msg.answer("Barchaga yuborilsinmi? Ha/Yo‘q")
-    await state.set_state(AdminStates.waiting_broadcast_target)
-
-@dp.message(AdminStates.waiting_broadcast_target)
-async def send_broadcast(msg: types.Message, state: FSMContext):
+@dp.message(AdminStates.waiting_quiz_type)
+async def save_quiz_type(msg: types.Message, state: FSMContext):
     data = await state.get_data()
-    text = data['message_text']
-    target_all = msg.text.strip().lower() in ["ha", "yes"]
-    cursor.execute("SELECT user_id FROM users")
-    users = cursor.fetchall()
-    count = 0
-    for u in users:
-        uid = u[0]
-        if target_all or uid in ADMIN_IDS:  # agar faqat tanlangan bo‘lsa admin
-            try:
-                await bot.send_message(uid, text)
-                count += 1
-            except:
-                pass
-    await msg.answer(f"📢 Xabar {count} foydalanuvchiga yuborildi!")
+    choice = int(msg.text.strip())
+    qt = "translation" if choice == 1 else "MCQ"
+    cursor.execute("UPDATE sections SET quiz_type=? WHERE id=?", (qt, data['section_id']))
+    conn.commit()
+    await msg.answer(f"✅ Quiz turi o‘zgartirildi: <b>{qt}</b>", parse_mode="HTML")
     await state.clear()
 
-# ====== BACK TO MAIN ======
-@dp.message(F.text == "Back to Main")
-async def back_to_main(msg: types.Message, state: FSMContext):
-    await state.clear()
-    await msg.answer("Asosiy menyuga qaytdingiz.", reply_markup=main_kb)
-
-# ====== TEST ======
+# --- Test boshlash ---
 @dp.message(F.text == "Start Test")
 async def start_test(msg: types.Message, state: FSMContext):
     if not can_take_test(msg.from_user.id):
         await msg.answer("⏳ 1 soat ichida yana test topshira olmaysiz.")
         return
-
     sections = get_sections()
     if not sections:
         await msg.answer("Hozircha section yo‘q.")
         return
 
-    kb = build_sections_kb()
-    await msg.answer("Test boshlash uchun section tanlang:", reply_markup=kb)
+    kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    for s in sections:
+        cursor.execute("SELECT COUNT(*) FROM words WHERE section_id=?", (s[0],))
+        count = cursor.fetchone()[0]
+        kb.add(f"{s[1]} ({count} so‘z)")
+    await msg.answer("Qaysi sectionni tanlaysiz?", reply_markup=kb)
     await state.set_state(TestStates.waiting_section)
 
+# --- Test flow ---
 @dp.message(TestStates.waiting_section)
 async def choose_section(msg: types.Message, state: FSMContext):
-    text = msg.text.split("(")[0].strip()  # section nomi
-    cursor.execute("SELECT id FROM sections WHERE name=?", (text,))
-    row = cursor.fetchone()
-    if not row:
-        await msg.answer("❌ Noto‘g‘ri section!")
+    sections = get_sections()
+    selected_name = msg.text.split("(")[0].strip()
+    section = next((s for s in sections if s[1] == selected_name), None)
+    if not section:
+        await msg.answer("❌ Section topilmadi!")
         return
-    sid = row[0]
+    sid = section[0]
     words = get_words(sid)
     if len(words) < 1:
-        await msg.answer("❌ Bu sectionda so‘zlar yetarli emas.")
+        await msg.answer("❌ Bu sectionda so‘zlar yetarli emas!")
         return
     random.shuffle(words)
-    await state.update_data(words=words, i=0, score=0, section_id=sid, correct=None)
+    await state.update_data(words=words, i=0, score=0, qt=section[2], section_id=sid, correct=None)
     update_last_test(msg.from_user.id)
     await ask_question(msg, state)
 
@@ -304,29 +277,76 @@ async def ask_question(msg: types.Message, state: FSMContext):
         total = len(d["words"])
         update_streak(msg.from_user.id)
         cursor.execute("INSERT INTO attempts (user_id, section_id, score, total) VALUES (?,?,?,?)",
-                       (msg.from_user.id, d['section_id'], score, total))
+                       (msg.from_user.id, d["section_id"], score, total))
         conn.commit()
         streak = get_current_streak(msg.from_user.id)
-        await msg.answer(f"🎉 Test tugadi!\nNatija: {score}/{total}\nStreak: {streak} kun")
+        await msg.answer(f"🎉 Test tugadi!\nNatija: {score}/{total}\nStreak: 🔥 {streak} kun", reply_markup=main_kb)
         await state.clear()
         return
-    word, trans = d["words"][d["i"]]
-    await msg.answer(f"Tarjima qiling: <b>{trans}</b>", parse_mode="HTML")
-    await state.update_data(correct=word)
+
+    eng, uz, example = d["words"][d["i"]]
+    if d["qt"] == "MCQ":
+        other_trans = [w[0] for w in d["words"] if w[0] != eng]
+        opts = random.sample(other_trans, min(3, len(other_trans))) + [eng]
+        random.shuffle(opts)
+        kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=o, callback_data=f"ans_{o}")] for o in opts])
+        await msg.answer(f"<b>{uz}</b>", reply_markup=kb, parse_mode="HTML")
+    else:
+        await msg.answer(f"<b>{uz}</b>\nMisol: {example or '—'}", parse_mode="HTML")
+
+    await state.update_data(correct=eng)
     await state.set_state(TestStates.waiting_answer)
 
-@dp.message(TestStates.waiting_answer)
-async def check_answer(msg: types.Message, state: FSMContext):
+@dp.callback_query(F.data.startswith("ans_"))
+async def handle_mcq(callback: types.CallbackQuery, state: FSMContext):
     d = await state.get_data()
-    user_ans = msg.text.strip().lower()
-    correct = d.get("correct", "").lower()
-    score = d["score"] + (1 if user_ans == correct else 0)
-    await state.update_data(score=score, i=d["i"] + 1)
+    user_answer = callback.data[4:]
+    is_correct = user_answer == d.get("correct")
+    new_score = d["score"] + (1 if is_correct else 0)
+    await state.update_data(score=new_score, i=d["i"] + 1)
+    status = "✅" if is_correct else "❌"
+    await callback.message.edit_text(f"{callback.message.text}\nSizning javobingiz: {user_answer} {status}", parse_mode="HTML")
+    await ask_question(callback.message, state)
+
+@dp.message(TestStates.waiting_answer)
+async def check_translation(msg: types.Message, state: FSMContext):
+    d = await state.get_data()
+    user_answer = msg.text.strip()
+    correct = d.get("correct", "")
+    new_score = d["score"] + (1 if user_answer.lower() == correct.lower() else 0)
+    await state.update_data(score=new_score, i=d["i"] + 1)
     await ask_question(msg, state)
 
-# ====== RUN ======
+# ====== STATISTIKA =====
+@dp.message(F.text == "My Stats")
+async def my_stats(msg: types.Message):
+    streak = get_current_streak(msg.from_user.id)
+    cursor.execute("SELECT COUNT(*), ROUND(AVG(score * 100.0 / total),1) FROM attempts WHERE user_id=?", (msg.from_user.id,))
+    row = cursor.fetchone()
+    if not row or row[0]==0:
+        await msg.answer("Siz hali test topshirmadingiz.")
+    else:
+        await msg.answer(f"📊 Sizning statistikangiz:\nStreak: 🔥 {streak} kun\nTestlar soni: {row[0]}\nO‘rtacha natija: {row[1]}%", parse_mode="HTML")
+
+@dp.message(F.text == "Leaderboard")
+async def leaderboard(msg: types.Message):
+    cursor.execute("SELECT user_id, SUM(score) as total_score, COUNT(*) as tests FROM attempts GROUP BY user_id ORDER BY total_score DESC LIMIT 10")
+    rows = cursor.fetchall()
+    if not rows:
+        await msg.answer("Leaderboard bo‘sh.")
+        return
+    text = "🏆 Top 10 o‘yinchilar:\n"
+    for i, r in enumerate(rows,1):
+        text += f"{i}. User {r[0]} — {r[1]} ball ({r[2]} test)\n"
+    await msg.answer(text)
+
+@dp.message(F.text == "Weak Words")
+async def weak_words(msg: types.Message):
+    await msg.answer("🔧 Weak Words funksiyasi tez orada ishga tushadi.")
+
+# ====== RUN =====
 async def main():
-    print("🤖 WordEngine ishga tushdi...")
+    print("🤖 WordEngine boti ishga tushdi...")
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
