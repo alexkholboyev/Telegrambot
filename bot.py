@@ -5,6 +5,8 @@ from aiogram import Bot, Dispatcher, types, F
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
+TOKEN = "8692757311:AAFFTPdtqd7NGn1w_QL1yZQbDN1lWvtCMxY"
+bot = Bot(token=TOKEN)
 import datetime
 
 # ====== CONFIG ======
