@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 import io
 
 # ====== CONFIG ======
-TOKEN = "8660534874:AAG-qTma8aY8bfOywi7BHLQdYZC8xWiGkx0"  # 
+TOKEN = "8660534874:AAG-qTma8aY8bfOywi7BHLQdYZC8xWiGkx0"  
 ADMIN_IDS = [5932847351, 123456789]
 COOLDOWN_HOURS = 1
 
