@@ -6,9 +6,9 @@ import json
 from datetime import date, timedelta
 
 # ==================== SOZLAMALAR ====================
-BOT_TOKEN = "YOUR_BOT_TOKEN_HERE"
-ADMIN_ID = 123456789
-ADMIN_CARD_NUMBER = "8600 1234 5678 9012"   # ← O'Z KARTANGIZ RAQAMINI YOZING
+BOT_TOKEN = "8660534874:AAG-qTma8aY8bfOywi7BHLQdYZC8xWiGkx0"
+ADMIN_ID = 5932847351
+ADMIN_CARD_NUMBER = "9860036673467175"   # ← O'Z KARTANGIZ RAQAMINI YOZING
 # ===================================================
 
 bot = telebot.TeleBot(BOT_TOKEN, parse_mode='HTML')
