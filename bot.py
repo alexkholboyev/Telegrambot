@@ -8,7 +8,7 @@ from datetime import date, timedelta
 # ==================== SOZLAMALAR ====================
 BOT_TOKEN = "8660534874:AAG-qTma8aY8bfOywi7BHLQdYZC8xWiGkx0"
 ADMIN_ID = 5932847351
-ADMIN_PAYMENT_CARD = "8600 1234 5678 9012"   # ← O'zingizning real karta raqamingizni qo'ying!
+ADMIN_PAYMENT_CARD = "9860036673467175"   # ← O'zingizning real karta raqamingizni qo'ying!
 # ===================================================
 
 bot = telebot.TeleBot(BOT_TOKEN)
