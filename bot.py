@@ -4,11 +4,10 @@ import sqlite3
 import random
 import json
 from datetime import date, timedelta
-import time
 
 # ==================== SOZLAMALAR ====================
-BOT_TOKEN = "8660534874:AAG-qTma8aY8bfOywi7BHLQdYZC8xWiGkx0"  # BotFather dan oling
-ADMIN_ID = 5932847351              # O'zingizning Telegram ID-ingiz
+BOT_TOKEN = "8660534874:AAG-qTma8aY8bfOywi7BHLQdYZC8xWiGkx0"
+ADMIN_ID = 5932847351
 # =====================================================
 
 bot = telebot.TeleBot(BOT_TOKEN)
@@ -73,15 +72,12 @@ conn.commit()
 c.execute("SELECT COUNT(*) FROM words")
 if c.fetchone()[0] == 0:
     samples = [
-        # A1 - Greetings
         ("A1", "Greetings", "hello", "salom"),
         ("A1", "Greetings", "hi", "salom"),
-        # A1 - Food
         ("A1", "Food", "apple", "olma"),
         ("A1", "Food", "water", "suv"),
         ("A1", "Animals", "cat", "mushuk"),
         ("A1", "Animals", "dog", "it"),
-        # A2 - Work
         ("A2", "Work", "job", "ish"),
         ("A2", "Work", "school", "maktab"),
         ("A2", "Travel", "travel", "sayohat"),
@@ -187,6 +183,7 @@ def callback(call):
         opt_idx = int(opt_idx_str)
         state = user_states.get(user_id)
         if not state:
+            bot.answer_callback_query(call.id, "⚠ Testni boshlang!")
             return
 
         q = state["questions"][q_idx]
@@ -202,8 +199,8 @@ def callback(call):
         state["current"] += 1
         try:
             bot.delete_message(call.message.chat.id, call.message.message_id)
-        except:
-            pass
+        except Exception as e:
+            print(f"Delete message error: {e}")
         send_next_question(call.message.chat.id, user_id)
 
     # Zaif so‘zlar test
@@ -228,16 +225,18 @@ def callback(call):
 
 # ===================== TEST FUNKSIYALARI =====================
 def start_test(message, level, section, user_id):
-    c.execute("SELECT id, english, uz_meaning FROM words WHERE level=? AND section=? ORDER BY RANDOM() LIMIT 10", (level, section))
+    c.execute("SELECT id, english, uz_meaning FROM words WHERE level=? AND section=? ORDER BY RANDOM()", (level, section))
     questions_raw = c.fetchall()
-    if len(questions_raw) < 5:
+    if len(questions_raw) < 3:
         bot.send_message(message.chat.id, f"❌ {level} {section} darajada yetarli so'z yo'q!")
         return
+
+    limit = min(10, len(questions_raw))
+    questions_raw = questions_raw[:limit]
 
     test_data = []
     for q in questions_raw:
         word_id, english, correct = q
-        # 3 ta noto'g'ri variant
         c.execute("SELECT uz_meaning FROM words WHERE level=? AND id!=? ORDER BY RANDOM() LIMIT 3", (level, word_id))
         others = [row[0] for row in c.fetchall()]
         while len(others) < 3:
@@ -246,15 +245,7 @@ def start_test(message, level, section, user_id):
         random.shuffle(options)
         test_data.append({"word_id": word_id, "english": english, "correct": correct, "options": options})
 
-    user_states[user_id] = {
-        "state": "test",
-        "level": level,
-        "section": section,
-        "questions": test_data,
-        "current": 0,
-        "score": 0,
-        "wrong": []
-    }
+    user_states[user_id] = {"state": "test", "level": level, "section": section, "questions": test_data, "current": 0, "score": 0, "wrong": []}
     send_next_question(message.chat.id, user_id)
 
 def send_next_question(chat_id, user_id):
@@ -370,6 +361,8 @@ def show_weak_test(chat_id, user_id):
         word_id, english, correct = q
         c.execute("SELECT uz_meaning FROM words WHERE id!=? ORDER BY RANDOM() LIMIT 3", (word_id,))
         others = [row[0] for row in c.fetchall()]
+        while len(others) < 3:
+            others.append("boshqa variant")
         options = [correct] + others[:3]
         random.shuffle(options)
         test_data.append({"word_id": word_id, "english": english, "correct": correct, "options": options})
@@ -399,14 +392,4 @@ def show_challenges(message):
         c.execute("INSERT INTO challenges (name, date, price, prize) VALUES (?,?,?,?)",
                   ("Weekly Word Master", "2026-04-12", 10000, 100000))
         conn.commit()
-        c.execute("SELECT id, name, date, price, prize FROM challenges")
-        rows = c.fetchall()
-
-    markup = types.InlineKeyboardMarkup()
-    for ch_id, name, date_, price, prize in rows:
-        markup.add(types.InlineKeyboardButton(
-            f"{name} | {date_} | To'lov: {price} | Mukofot: {prize}",
-            callback_data=f"join_ch:{ch_id}"
-        ))
-
-    bot.send_message(message.chat.id, "💰 <b>Available Challenges</b>:", parse_mode='HTML', reply_markup=markup)
+        c.execute("SELECT id, name, date,
