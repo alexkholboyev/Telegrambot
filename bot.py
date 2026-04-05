@@ -393,6 +393,20 @@ def show_leaders(message):
 def show_challenges(message):
     c.execute("SELECT id, name, date, price, prize FROM challenges")
     rows = c.fetchall()
+
+    # Agar challenge bo'lmasa, default qo'shish
     if not rows:
         c.execute("INSERT INTO challenges (name, date, price, prize) VALUES (?,?,?,?)",
-          ("Weekly Word Master", "2026-04-12", 10000, 100000))
+                  ("Weekly Word Master", "2026-04-12", 10000, 100000))
+        conn.commit()
+        c.execute("SELECT id, name, date, price, prize FROM challenges")
+        rows = c.fetchall()
+
+    markup = types.InlineKeyboardMarkup()
+    for ch_id, name, date_, price, prize in rows:
+        markup.add(types.InlineKeyboardButton(
+            f"{name} | {date_} | To'lov: {price} | Mukofot: {prize}",
+            callback_data=f"join_ch:{ch_id}"
+        ))
+
+    bot.send_message(message.chat.id, "💰 <b>Available Challenges</b>:", parse_mode='HTML', reply_markup=markup)
