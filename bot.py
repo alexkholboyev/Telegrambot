@@ -45,17 +45,6 @@ c.execute('''CREATE TABLE IF NOT EXISTS user_weak (
     PRIMARY KEY (user_id, word_id)
 )''')
 
-# Test natijalari
-c.execute('''CREATE TABLE IF NOT EXISTS test_results (
-    id INTEGER PRIMARY KEY,
-    user_id INTEGER,
-    level TEXT,
-    section TEXT,
-    score INTEGER,
-    total_questions INTEGER,
-    date TEXT
-)''')
-
 # Challenges jadvali
 c.execute('''CREATE TABLE IF NOT EXISTS challenges (
     id INTEGER PRIMARY KEY,
@@ -395,4 +384,9 @@ def show_challenges(message):
             f"{name} | {date_ch} | 💰 {prize}",
             callback_data=f"join_ch:{ch_id}"
         ))
-    bot
+    bot.send_message(message.chat.id, "💰 Mavjud challenge'lar:", reply_markup=markup)
+
+# ===================== BOT POLLING =====================
+if __name__ == "__main__":
+    print("Bot ishga tushdi...")
+    bot.infinity_polling()
