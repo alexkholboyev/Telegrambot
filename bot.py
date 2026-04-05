@@ -158,7 +158,6 @@ def callback(call):
     user_id = call.from_user.id
     data = call.data
 
-    # Darajadan section tanlash
     if data.startswith("choose_section:"):
         level = data.split(":")[1]
         c.execute("SELECT DISTINCT section FROM words WHERE level = ?", (level,))
@@ -171,12 +170,10 @@ def callback(call):
             markup.add(types.InlineKeyboardButton(sec, callback_data=f"start_test:{level}:{sec}"))
         bot.send_message(call.message.chat.id, f"📂 {level} darajasidagi sectionni tanlang:", reply_markup=markup)
 
-    # Test boshlash
     elif data.startswith("start_test:"):
         _, level, section = data.split(":")
         start_test(call.message, level, section, user_id)
 
-    # Test javobi
     elif data.startswith("answer:"):
         _, q_idx_str, opt_idx_str = data.split(":")
         q_idx = int(q_idx_str)
@@ -203,11 +200,9 @@ def callback(call):
             print(f"Delete message error: {e}")
         send_next_question(call.message.chat.id, user_id)
 
-    # Zaif so‘zlar test
     elif data == "repeat_weak":
         show_weak_test(call.message.chat.id, user_id)
 
-    # Challenge qo‘shilish
     elif data.startswith("join_ch:"):
         ch_id = int(data.split(":")[1])
         c.execute("SELECT participants FROM challenges WHERE id = ?", (ch_id,))
@@ -392,6 +387,13 @@ def show_challenges(message):
         c.execute("INSERT INTO challenges (name, date, price, prize) VALUES (?,?,?,?)",
                   ("Weekly Word Master", "2026-04-12", 10000, 100000))
         conn.commit()
-        c.execute("SELECT id, name, date, another_column "
-          "FROM table_name "
-          "WHERE condition = 1")
+        c.execute("SELECT id, name, date, price, prize FROM challenges")
+        rows = c.fetchall()
+
+    markup = types.InlineKeyboardMarkup(row_width=1)
+    for ch_id, name, date_ch, price, prize in rows:
+        markup.add(types.InlineKeyboardButton(
+            f"{name} | {date_ch} | 💰 {prize}",
+            callback_data=f"join_ch:{ch_id}"
+        ))
+    bot.send_message(message.chat
