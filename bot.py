@@ -395,4 +395,4 @@ def show_challenges(message):
     rows = c.fetchall()
     if not rows:
         c.execute("INSERT INTO challenges (name, date, price, prize) VALUES (?,?,?,?)",
-                  ("Weekly
+                  ("Weekly")
