@@ -392,4 +392,6 @@ def show_challenges(message):
         c.execute("INSERT INTO challenges (name, date, price, prize) VALUES (?,?,?,?)",
                   ("Weekly Word Master", "2026-04-12", 10000, 100000))
         conn.commit()
-        c.execute("SELECT id, name, date,
+        c.execute("SELECT id, name, date, another_column "
+          "FROM table_name "
+          "WHERE condition = 1")
