@@ -58,15 +58,22 @@ CREATE TABLE IF NOT EXISTS challenges (
 ''')
 conn.commit()
 
-# Namuna so'zlar
+# Namuna so'zlar (ko'paytirildi, endi har bir bo'limda yetarli so'z bor)
 c.execute("SELECT COUNT(*) FROM words")
 if c.fetchone()[0] == 0:
     samples = [
-        ("A1", "Daily Life", "hello", "salom"), ("A1", "Daily Life", "apple", "olma"),
+        ("A1", "Daily Life", "hello", "salom"), ("A1", "Daily Life", "goodbye", "xayr"),
+        ("A1", "Daily Life", "apple", "olma"), ("A1", "Daily Life", "water", "suv"),
         ("A1", "Animals", "cat", "mushuk"), ("A1", "Animals", "dog", "it"),
-        ("A2", "School", "school", "maktab"), ("A2", "Travel", "travel", "sayohat"),
-        ("B1", "General", "important", "muhim"), ("B1", "Environment", "environment", "atrof-muhit"),
+        ("A1", "Animals", "bird", "qush"), ("A1", "Animals", "fish", "baliq"),
+        ("A2", "School", "school", "maktab"), ("A2", "School", "teacher", "o'qituvchi"),
+        ("A2", "School", "book", "kitob"), ("A2", "School", "student", "o'quvchi"),
+        ("A2", "Travel", "travel", "sayohat"), ("A2", "Travel", "hotel", "mehmonxona"),
+        ("A2", "Travel", "ticket", "bileta"), ("A2", "Travel", "airport", "aeroport"),
+        ("B1", "General", "important", "muhim"), ("B1", "General", "happy", "baxtli"),
+        ("B1", "Environment", "environment", "atrof-muhit"), ("B1", "Environment", "pollution", "ifloslanish"),
         ("IELTS", "Academic", "sustainable", "barqaror"), ("IELTS", "Academic", "innovation", "innovatsiya"),
+        ("IELTS", "Academic", "research", "tadqiqot"), ("IELTS", "Academic", "analysis", "tahlil"),
     ]
     for lvl, sec, en, uz in samples:
         c.execute("INSERT OR IGNORE INTO words (level, section, english, uz_meaning) VALUES (?, ?, ?, ?)", (lvl, sec, en, uz))
@@ -104,7 +111,8 @@ def menu_handler(message):
 def show_coins(message):
     user_id = message.from_user.id
     c.execute("SELECT coins FROM users WHERE user_id = ?", (user_id,))
-    coins = c.fetchone()[0] if c.fetchone() else 0
+    row = c.fetchone()
+    coins = row[0] if row else 0
     bot.send_message(message.chat.id, f"💰 <b>Sizning XOS coinlaringiz</b>\n\n💎 Jami: <b>{coins}</b> XOS coin\n\nHar bir toʻgʻri javob = +1 coin!")
 
 # ==================== TEST ====================
@@ -136,8 +144,8 @@ def start_test(call):
         return
     c.execute("SELECT id, english, uz_meaning FROM words WHERE level = ? AND section = ? ORDER BY RANDOM() LIMIT 10", (level, section))
     questions_raw = c.fetchall()
-    if len(questions_raw) < 5:
-        bot.answer_callback_query(call.id, "Bu bo'limda yetarli so'z yo'q!")
+    if len(questions_raw) == 0:  # Tuzatildi: endi kam so'z bo'lsa ham test boshlanadi (oldingi <5 tufayli test ishlamayotgan edi)
+        bot.answer_callback_query(call.id, "Bu bo'limda so'z yo'q!")
         return
 
     test_data = []
@@ -409,17 +417,17 @@ def admin_state_handler(message):
         user_states.pop(ADMIN_ID, None)
     elif st.get("state") == "set_winner":
         try:
-            ch_id, winner_id = map(int, message.text.split())
+            parts = message.text.strip().split()
+            if len(parts) != 2:
+                raise ValueError
+            ch_id = int(parts[0])
+            winner_id = int(parts[1])
             c.execute("UPDATE challenges SET winner_id = ? WHERE id = ?", (winner_id, ch_id))
             conn.commit()
-            bot.send_message(messsage.chat.id, f"✅ Challenge {ch_id} uchun g‘olib {winner_id} belgilandi!")
+            bot.send_message(message.chat.id, f"✅ Challenge ID {ch_id} uchun g‘olib {winner_id} belgilandi!")
         except:
-            bot.send_message(message.chat.id, "❌ Format xato! (ID ID)")
+            bot.send_message(message.chat.id, "❌ Format xato! Masalan: 1 987654321")
         user_states.pop(ADMIN_ID, None)
 
-@bot.message_handler(commands=['myid'])
-def my_id(message):
-    bot.send_message(message.chat.id, f"Sizning ID: <code>{message.from_user.id}</code>")
-
-print("🚀 WORD TEST BOT — MUKAMMAL VERSIYA Ishga tushdi!")
-bot.infinity_polling(none_stop=True, interval=0)
+print("✅ BOT ISHLADI! Test endi to'g'ri ishlaydi.")
+bot.infinity_polling()
