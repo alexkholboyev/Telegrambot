@@ -28,7 +28,7 @@ c.execute('''CREATE TABLE IF NOT EXISTS users (
     level INTEGER DEFAULT 1
 )''')
 
-# Levels va so‘zlar
+# Words jadvali
 c.execute('''CREATE TABLE IF NOT EXISTS words (
     id INTEGER PRIMARY KEY,
     level TEXT,
@@ -56,7 +56,7 @@ c.execute('''CREATE TABLE IF NOT EXISTS test_results (
     date TEXT
 )''')
 
-# Challenge
+# Challenges jadvali
 c.execute('''CREATE TABLE IF NOT EXISTS challenges (
     id INTEGER PRIMARY KEY,
     name TEXT,
@@ -196,8 +196,8 @@ def callback(call):
         state["current"] += 1
         try:
             bot.delete_message(call.message.chat.id, call.message.message_id)
-        except Exception as e:
-            print(f"Delete message error: {e}")
+        except:
+            pass
         send_next_question(call.message.chat.id, user_id)
 
     elif data == "repeat_weak":
@@ -382,7 +382,6 @@ def show_challenges(message):
     c.execute("SELECT id, name, date, price, prize FROM challenges")
     rows = c.fetchall()
 
-    # Agar challenge bo'lmasa, default qo'shish
     if not rows:
         c.execute("INSERT INTO challenges (name, date, price, prize) VALUES (?,?,?,?)",
                   ("Weekly Word Master", "2026-04-12", 10000, 100000))
@@ -396,4 +395,4 @@ def show_challenges(message):
             f"{name} | {date_ch} | 💰 {prize}",
             callback_data=f"join_ch:{ch_id}"
         ))
-    bot.send_message(message.chat
+    bot
