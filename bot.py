@@ -516,28 +516,24 @@ def finish_test(chat_id, user_id):
 @bot.callback_query_handler(func=lambda call: call.data.startswith("start_test:"))
 def finish_test(call):
     user_id = call.from_user.id
-    chat_id = call.from_user.id  # chat_id endi aniq
+    chat_id = call.from_user.id
 
     # real test natijalarini hisoblash
-    # misol uchun, test javoblari user_states ichida saqlangan bo'lishi mumkin
     state = user_states.get(user_id, {})
     answers = state.get("answers", [])
     total = len(answers)
-    score = sum(1 for ans in answers if ans["correct"])  # to‘g‘ri javoblar soni
+    score = sum(1 for ans in answers if ans["correct"])  # to'g'ri javoblar
 
-    # natijani bazaga yozish
-    c.execute("""
-        UPDATE users
-        SET total_tests = total_tests + ?, xp = xp + ?
-        WHERE user_id = ?
-    """, (total, score * 5, user_id))
+    # test natijasini bazaga yozish
+    query = "UPDATE users SET total_tests = ?, xp = ? WHERE user_id = ?"
+    c.execute(query, (total, score * 5, user_id))
     conn.commit()
 
-    # foydalanuvchiga natijani jo‘natish
+    # foydalanuvchiga xabar jo'natish
     bot.send_message(
         chat_id,
         f"🏁 Test tugadi!\n\n✅ To‘g‘ri: {score}/{total}\n💰 Coin: +{score}"
     )
 
-    # user_states dan foydalanuvchi testini tozalash
+    # user_states tozalash
     user_states.pop(user_id, None)
