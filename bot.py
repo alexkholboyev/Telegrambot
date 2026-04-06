@@ -120,7 +120,7 @@ def show_levels(message):
     markup = types.InlineKeyboardMarkup(row_width=2)
     for lvl in ["A1", "A2", "B1", "B2", "IELTS"]:
         markup.add(types.InlineKeyboardButton(lvl, callback_data=f"level:{lvl}"))
-    bot.send_message(message.chat.id, "📘 Qaysi <b>darajadan</b> test boshlaymiz?", reply_markup=markup)
+    bot.send_message(message.chat.id, "📘 Qaysi <b>darajadan</b> test boshlaymiz?", reply_markup=markup, parse_mode="HTML")
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("level:"))
 def choose_section(call):
@@ -130,33 +130,57 @@ def choose_section(call):
     if not sections:
         bot.answer_callback_query(call.id, "Bu darajada so'z yo'q!")
         return
+
     markup = types.InlineKeyboardMarkup(row_width=2)
     for sec in sections:
         markup.add(types.InlineKeyboardButton(sec, callback_data=f"start_test:{level}:{sec}"))
-    bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id, text=f"📘 {level} darajasi\n\nQaysi <b>bo'lim</b>dan test qilamiz?", reply_markup=markup)
+    bot.edit_message_text(
+        chat_id=call.message.chat.id,
+        message_id=call.message.message_id,
+        text=f"📘 {level} darajasi\n\nQaysi <b>bo'lim</b>dan test qilamiz?",
+        reply_markup=markup,
+        parse_mode="HTML"
+    )
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("start_test:"))
 def start_test(call):
     _, level, section = call.data.split(":")
     user_id = call.from_user.id
+
     if user_id in user_states and user_states[user_id].get("state") == "test":
         bot.answer_callback_query(call.id, "Siz allaqachon testda turibsiz!")
         return
-    c.execute("SELECT id, english, uz_meaning FROM words WHERE level = ? AND section = ? ORDER BY RANDOM() LIMIT 10", (level, section))
+
+    c.execute(
+        "SELECT id, english, uz_meaning FROM words WHERE level = ? AND section = ? ORDER BY RANDOM() LIMIT 10",
+        (level, section)
+    )
     questions_raw = c.fetchall()
-    if len(questions_raw) == 0:  # Tuzatildi: endi kam so'z bo'lsa ham test boshlanadi (oldingi <5 tufayli test ishlamayotgan edi)
+    if len(questions_raw) == 0:
         bot.answer_callback_query(call.id, "Bu bo'limda so'z yo'q!")
         return
 
     test_data = []
     for wid, en, uz in questions_raw:
-        c.execute("SELECT uz_meaning FROM words WHERE level=? AND section=? AND id != ? ORDER BY RANDOM() LIMIT 3", (level, section, wid))
+        c.execute(
+            "SELECT uz_meaning FROM words WHERE level=? AND section=? AND id != ? ORDER BY RANDOM() LIMIT 3",
+            (level, section, wid)
+        )
         others = [r[0] for r in c.fetchall()]
         options = [uz] + others
         random.shuffle(options)
         test_data.append({"word_id": wid, "english": en, "correct": uz, "options": options})
 
-    user_states[user_id] = {"state": "test", "level": level, "section": section, "questions": test_data, "current": 0, "score": 0, "wrong": []}
+    user_states[user_id] = {
+        "state": "test",
+        "level": level,
+        "section": section,
+        "questions": test_data,
+        "current": 0,
+        "score": 0,
+        "wrong": []
+    }
+
     bot.answer_callback_query(call.id, "✅ Test boshlandi!")
     send_next_question(call.message.chat.id, user_id)
 
@@ -165,44 +189,17 @@ def send_next_question(chat_id, user_id):
     if not state or state["current"] >= len(state["questions"]):
         end_test(chat_id, user_id)
         return
+
     q = state["questions"][state["current"]]
     markup = types.InlineKeyboardMarkup(row_width=2)
     for i, opt in enumerate(q["options"]):
         markup.add(types.InlineKeyboardButton(opt, callback_data=f"answer:{state['current']}:{i}"))
-    text = f"❓ Savol <b>{state['current'] + 1}/{len(state['questions'])}</b>\n\n<b>{state['level']}</b> • <b>{state['section']}</b>\n\nSo‘z: <b>{q['english']}</b>\nMa’nosini tanlang:"
-    bot.send_message(chat_id, text, reply_markup=markup)
 
-def end_test(chat_id, user_id):
-    state = user_states.pop(user_id, None)
-    if not state: return
-    score = state["score"]
-    total = len(state["questions"])
-    percent = round(score / total * 100) if total else 0
+    text = f"❓ Savol <b>{state['current'] + 1}/{len(state['questions'])}</b>\n\n" \
+           f"<b>{state['level']}</b> • <b>{state['section']}</b>\n\n" \
+           f"So‘z: <b>{q['english']}</b>\nMa’nosini tanlang:"
 
-    c.execute("""UPDATE users SET total_tests = total_tests + 1, total_correct = total_correct + ?, xp = xp + ?, coins = coins + ? WHERE user_id = ?""", 
-              (score, score * 10, score, user_id))
-
-    c.execute("SELECT xp FROM users WHERE user_id = ?", (user_id,))
-    new_xp = c.fetchone()[0]
-    new_lvl = (new_xp // 1000) + 1
-    c.execute("UPDATE users SET level = ? WHERE user_id = ?", (new_lvl, user_id))
-
-    for wid in state.get("wrong", []):
-        c.execute("""INSERT INTO user_weak (user_id, word_id, error_count) VALUES (?, ?, 1) ON CONFLICT(user_id, word_id) DO UPDATE SET error_count = error_count + 1""", (user_id, wid))
-
-    today = date.today().isoformat()
-    c.execute("SELECT last_test_date, streak FROM users WHERE user_id = ?", (user_id,))
-    row = c.fetchone() or (None, 0)
-    last, streak = row
-    if last != today:
-        if last and date.fromisoformat(last) == date.today() - timedelta(days=1):
-            streak += 1
-        else:
-            streak = 1
-        c.execute("UPDATE users SET streak = ?, last_test_date = ? WHERE user_id = ?", (streak, today, user_id))
-
-    conn.commit()
-    bot.send_message(chat_id, f"🎉 <b>Test tugadi!</b>\n\nDaraja: <b>{state['level']}</b> | Bo‘lim: <b>{state['section']}</b>\nTo‘g‘ri: <b>{score}/{total}</b> ({percent}%)\n💎 +{score} XOS coin | XP: +{score*10} | Streak: 🔥 {streak} kun", reply_markup=main_keyboard())
+    bot.send_message(chat_id, text, reply_markup=markup, parse_mode="HTML")
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("answer:"))
 def process_answer(call):
@@ -211,19 +208,30 @@ def process_answer(call):
         _, q_idx, opt_idx = call.data.split(":")
         q_idx = int(q_idx)
         opt_idx = int(opt_idx)
-    except: return
+    except:
+        return
+
     state = user_states.get(user_id)
-    if not state or q_idx >= len(state["questions"]): return
+    if not state or q_idx >= len(state["questions"]):
+        return
+
     q = state["questions"][q_idx]
+
+    # Javobni tekshirish
     if q["options"][opt_idx] == q["correct"]:
         state["score"] += 1
         bot.answer_callback_query(call.id, "✅ To‘g‘ri! +1 XOS coin")
     else:
         state["wrong"].append(q["word_id"])
         bot.answer_callback_query(call.id, f"❌ Xato! To‘g‘ri: {q['correct']}")
+
     state["current"] += 1
-    try: bot.delete_message(call.message.chat.id, call.message.message_id)
-    except: pass
+
+    try:
+        bot.delete_message(call.message.chat.id, call.message.message_id)
+    except:
+        pass
+
     send_next_question(call.message.chat.id, user_id)
 
 # ==================== STATISTIKA, ZAIF SO'ZLAR, LIDERLAR ====================
