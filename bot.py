@@ -512,7 +512,6 @@ def finish_test(chat_id, user_id):
     score = state["score"]
     total = len(state["questions"])
 
-    c.execute("""
 @bot.callback_query_handler(func=lambda call: call.data.startswith("start_test:"))
 def finish_test(call):
     user_id = call.from_user.id
@@ -522,14 +521,14 @@ def finish_test(call):
     state = user_states.get(user_id, {})
     answers = state.get("answers", [])
     total = len(answers)
-    score = sum(1 for ans in answers if ans["correct"])  # to'g'ri javoblar
+    score = sum(1 for ans in answers if ans.get("correct"))  # to'g'ri javoblar
 
     # test natijasini bazaga yozish
     query = "UPDATE users SET total_tests = ?, xp = ? WHERE user_id = ?"
     c.execute(query, (total, score * 5, user_id))
     conn.commit()
 
-    # foydalanuvchiga xabar jo'natish
+    # foydalanuvchiga natijani jo'natish
     bot.send_message(
         chat_id,
         f"🏁 Test tugadi!\n\n✅ To‘g‘ri: {score}/{total}\n💰 Coin: +{score}"
