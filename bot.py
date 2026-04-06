@@ -176,6 +176,45 @@ def start_test(call):
         (level, section)
     )
     questions_raw = c.fetchall()
+    if not questions_raw:
+        bot.answer_callback_query(call.id, "Bu bo'limda so'z yo'q!")
+        return
+
+    test_data = []
+    for wid, en, uz in questions_raw:
+        c.execute(
+            "SELECT uz_meaning FROM words WHERE level=? AND section=? AND id != ? ORDER BY RANDOM() LIMIT 3",
+            (level, section, wid)
+        )
+        others = [r[0] for r in c.fetchall()]
+        while len(others) < 3:
+            others.append("❓")
+        options = [uz] + others
+        random.shuffle(options)
+        test_data.append({"word_id": wid, "english": en, "correct": uz, "options": options})
+
+    user_states[user_id] = {
+        "state": "test",
+        "level": level,
+        "section": section,
+        "questions": test_data,
+        "current": 0,
+        "score": 0,
+        "wrong": []
+    }
+
+    bot.answer_callback_query(call.id, "✅ Test boshlandi!")
+    send_next_question(call.message.chat.id, user_id)
+
+    if user_id in user_states and user_states[user_id].get("state") == "test":
+        bot.answer_callback_query(call.id, "Siz allaqachon testda turibsiz!")
+        return
+
+    c.execute(
+        "SELECT id, english, uz_meaning FROM words WHERE level = ? AND section = ? ORDER BY RANDOM() LIMIT 10",
+        (level, section)
+    )
+    questions_raw = c.fetchall()
     if len(questions_raw) == 0:
         bot.answer_callback_query(call.id, "Bu bo'limda so'z yo'q!")
         return
