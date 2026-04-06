@@ -185,12 +185,15 @@ def send_next_question(chat_id, user_id):
     for opt in q["options"]:
         markup.add(types.InlineKeyboardButton(opt, callback_data=f"answer:{opt}"))
 
-    bot.send_message(
-        chat_id,
-        f"❓ <b>{q['english']}</b> so‘zining ma’nosi?",
-        reply_markup=markup,
-        parse_mode="HTML"
-    )
+    # 1. chat_id ni aniqlaymiz
+chat_id = call.from_user.id  
+
+# 2. Savolni yuboramiz
+bot.send_message(
+    chat_id,
+    f"❓ <b>{q['english']}</b> so‘zining ma’nosi?",
+    parse_mode="HTML"
+)
 
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("answer:"))
