@@ -517,6 +517,7 @@ UPDATE users
 SET total_tests = total_tests + ?, xp = xp + ?
 WHERE user_id = ?
 """, (total, score * 5, user_id))
+chat_id = call.from_user.id
 conn.commit()
 bot.send_message(
     chat_id,
