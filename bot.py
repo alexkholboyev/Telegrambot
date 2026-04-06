@@ -519,11 +519,12 @@ WHERE user_id = ?
 """, (total, score * 5, user_id))
 conn.commit()
 bot.send_message(
-        chat_id,
-        f"🏁 Test tugadi!\n\n✅ To‘g‘ri: {score}/{total}\n💰 Coin: +{score}"
-    )
+    chat_id,
+    f"🏁 Test tugadi!\n\n✅ To‘g‘ri: {score}/{total}\n💰 Coin: +{score}"
+)
 
-    user_states.pop(user_id, None)
+# user state ni tozalash
+user_states.pop(user_id, None)
 
 print("✅ BOT ISHLADI! Test endi to'g'ri ishlaydi.")
 bot.infinity_polling()
