@@ -184,7 +184,8 @@ def send_next_question(chat_id, user_id):
     markup = types.InlineKeyboardMarkup(row_width=2)
     for opt in q["options"]:
         markup.add(types.InlineKeyboardButton(opt, callback_data=f"answer:{opt}"))
-
+def send_next_question(call):
+    chat_id = call.message.chat.id  # 👈 shu MUHIM
 # 2. Savolni yuboramiz
 bot.send_message(
     chat_id,
