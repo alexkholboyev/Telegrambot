@@ -518,14 +518,19 @@ SET total_tests = total_tests + ?, xp = xp + ?
 WHERE user_id = ?
 """, (total, score * 5, user_id))
 chat_id = call.from_user.id
-conn.commit()
-bot.send_message(
-    chat_id,
-    f"🏁 Test tugadi!\n\n✅ To‘g‘ri: {score}/{total}\n💰 Coin: +{score}"
-)
+@bot.callback_query_handler(func=lambda call: call.data.startswith("start_test:"))
+def finish_test(call):
+    user_id = call.from_user.id
+    chat_id = call.from_user.id  # ← shu qatorni qo‘shish
+    score = 10  # misol uchun, real qiymatni hisoblang
+    total = 10  # misol uchun
 
-# user state ni tozalash
-user_states.pop(user_id, None)
+    # test natijasini saqlash
+    conn.commit()
 
-print("✅ BOT ISHLADI! Test endi to'g'ri ishlaydi.")
+    # foydalanuvchiga xabar jo‘natish
+    bot.send_message(
+        chat_id,
+        f"🏁 Test tugadi!\n\n✅ To‘g‘ri: {score}/{total}\n💰 Coin: +{score}"
+    )
 bot.infinity_polling()
