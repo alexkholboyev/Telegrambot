@@ -225,22 +225,42 @@ def finish_test(chat_id, user_id):
         WHERE user_id = ?
     """, (total, score * 5, user_id))
     conn.commit()
+# ==================== TEST TUGAGANDA ====================
+chat_id = call.message.chat.id
+
+bot.send_message(
+    chat_id,
+    f"🏁 Test tugadi!\n\n✅ To‘g‘ri: {score}/{total}\n💰 Coin: +{score}",
+    parse_mode="HTML"
+)
+
+user_states.pop(user_id, None)
+
+# ==================== KEYINGI SAVOL ====================
+def send_next_question(call, user_id):
+    state = user_states.get(user_id)
+    if not state:
+        return
+
+    if state["current"] >= len(state["questions"]):
+        return  # test tugagan
+
+    q = state["questions"][state["current"]]
+    chat_id = call.message.chat.id
+
+    markup = types.InlineKeyboardMarkup(row_width=2)
+    for opt in q["options"]:
+        markup.add(types.InlineKeyboardButton(opt, callback_data=f"answer:{opt}"))
 
     bot.send_message(
         chat_id,
-        f"🏁 Test tugadi!\n\n✅ To‘g‘ri: {score}/{total}\n💰 Coin: +{score}",
+        f"❓ <b>{q['english']}</b> so‘zining ma’nosi?",
+        reply_markup=markup,
         parse_mode="HTML"
     )
 
-    user_states.pop(user_id, None)
-
-    send_next_question(call.message.chat.id, user_id)
-bot.send_message(
-    chat_id,
-    f"❓ <b>{q['english']}</b> so‘zining ma’nosi?",
-    reply_markup=markup,
-    parse_mode="HTML"
-)
+# ==================== CHAQRISH ====================
+send_next_question(call, user_id)
 # ==================== STATISTIKA, ZAIF SO'ZLAR, LIDERLAR ====================
 def show_statistics(message):
     user_id = message.from_user.id
