@@ -225,29 +225,19 @@ def finish_test(chat_id, user_id):
         WHERE user_id = ?
     """, (total, score * 5, user_id))
     conn.commit()
-# ==================== TEST TUGAGANDA ====================
-chat_id = call.message.chat.id
+# ==================== TEST FUNKSIYALARI ====================
+from telebot import types
 
-bot.send_message(
-    chat_id,
-    f"🏁 Test tugadi!\n\n✅ To‘g‘ri: {score}/{total}\n💰 Coin: +{score}",
-    parse_mode="HTML"
-)
-
-user_states.pop(user_id, None)
-
-# ==================== KEYINGI SAVOL ====================
-def send_next_question(call, user_id):
+def send_next_question(chat_id, user_id):
     state = user_states.get(user_id)
     if not state:
         return
 
     if state["current"] >= len(state["questions"]):
-        return  # test tugagan
+        finish_test(chat_id, user_id)
+        return
 
     q = state["questions"][state["current"]]
-    chat_id = call.message.chat.id
-
     markup = types.InlineKeyboardMarkup(row_width=2)
     for opt in q["options"]:
         markup.add(types.InlineKeyboardButton(opt, callback_data=f"answer:{opt}"))
@@ -259,8 +249,58 @@ def send_next_question(call, user_id):
         parse_mode="HTML"
     )
 
-# ==================== CHAQRISH ====================
-send_next_question(call, user_id)
+@bot.callback_query_handler(func=lambda call: call.data.startswith("answer:"))
+def handle_answer(call):
+    user_id = call.from_user.id
+    state = user_states.get(user_id)
+    if not state:
+        return
+
+    answer = call.data.split(":")[1]
+    current_q = state["questions"][state["current"]]
+
+    # javobni tekshirish
+    correct = answer == current_q["correct"]
+    state["answers"].append({"question": current_q["english"], "your_answer": answer, "correct": correct})
+
+    state["current"] += 1
+    chat_id = call.message.chat.id
+    bot.answer_callback_query(call.id, "✅ Javob qabul qilindi!")
+
+    send_next_question(chat_id, user_id)
+
+def finish_test(chat_id, user_id):
+    state = user_states.get(user_id)
+    if not state:
+        return
+
+    total = len(state["answers"])
+    score = sum(1 for a in state["answers"] if a["correct"])
+
+    bot.send_message(
+        chat_id,
+        f"🏁 Test tugadi!\n\n✅ To‘g‘ri: {score}/{total}\n💰 Coin: +{score}",
+        parse_mode="HTML"
+    )
+
+    user_states.pop(user_id, None)
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("start_test:"))
+def start_test(call):
+    user_id = call.from_user.id
+    if user_id in user_states and user_states[user_id].get("state") == "test":
+        bot.answer_callback_query(call.id, "Siz allaqachon testda turibsiz!")
+        return
+
+    _, level, section = call.data.split(":")
+    c.execute("SELECT english, correct, options FROM questions WHERE level=? AND section=?", (level, section))
+    questions_raw = c.fetchall()
+    questions = [{"english": en, "correct": correct, "options": json.loads(opts)} for en, correct, opts in questions_raw]
+
+    user_states[user_id] = {"state": "test", "current": 0, "questions": questions, "answers": []}
+    chat_id = call.from_user.id
+    bot.answer_callback_query(call.id, "✅ Test boshlandi!")
+    send_next_question(chat_id, user_id)
 # ==================== STATISTIKA, ZAIF SO'ZLAR, LIDERLAR ====================
 def show_statistics(message):
     user_id = message.from_user.id
