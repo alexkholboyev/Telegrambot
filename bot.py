@@ -398,6 +398,79 @@ def admin_state_handler(message):
         except:
             bot.send_message(message.chat.id, "❌ Format xato! Masalan: 1 987654321")
         user_states.pop(ADMIN_ID, None)
+def send_next_question(chat_id, user_id):
+    state = user_states.get(user_id)
+
+    if not state:
+        return
+
+    if state["current"] >= len(state["questions"]):
+        finish_test(chat_id, user_id)
+        return
+
+    q = state["questions"][state["current"]]
+
+    markup = types.InlineKeyboardMarkup(row_width=2)
+    for opt in q["options"]:
+        markup.add(types.InlineKeyboardButton(opt, callback_data=f"answer:{opt}"))
+
+    bot.send_message(
+        chat_id,
+        f"❓ <b>{q['english']}</b> so‘zining ma’nosi?",
+        reply_markup=markup
+    )
+@bot.callback_query_handler(func=lambda call: call.data.startswith("answer:"))
+def handle_answer(call):
+    user_id = call.from_user.id
+    state = user_states.get(user_id)
+
+    if not state or state.get("state") != "test":
+        return
+
+    answer = call.data.split(":", 1)[1]
+    q = state["questions"][state["current"]]
+
+    if answer == q["correct"]:
+        state["score"] += 1
+
+        c.execute("UPDATE users SET coins = coins + 1, total_correct = total_correct + 1 WHERE user_id = ?", (user_id,))
+    else:
+        state["wrong"].append(q["word_id"])
+
+        c.execute("""
+        INSERT INTO user_weak (user_id, word_id, error_count)
+        VALUES (?, ?, 1)
+        ON CONFLICT(user_id, word_id)
+        DO UPDATE SET error_count = error_count + 1
+        """, (user_id, q["word_id"]))
+
+    state["current"] += 1
+    conn.commit()
+
+    send_next_question(call.message.chat.id, user_id)
+def finish_test(chat_id, user_id):
+    state = user_states.get(user_id)
+
+    if not state:
+        return
+
+    score = state["score"]
+    total = len(state["questions"])
+
+    c.execute("""
+    UPDATE users
+    SET total_tests = total_tests + ?, xp = xp + ?
+    WHERE user_id = ?
+    """, (total, score * 5, user_id))
+
+    conn.commit()
+
+    bot.send_message(
+        chat_id,
+        f"🏁 Test tugadi!\n\n✅ To‘g‘ri: {score}/{total}\n💰 Coin: +{score}"
+    )
+
+    user_states.pop(user_id, None)
 
 print("✅ BOT ISHLADI! Test endi to'g'ri ishlaydi.")
 bot.infinity_polling()
