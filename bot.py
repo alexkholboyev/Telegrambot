@@ -195,7 +195,12 @@ def start_test(call):
     bot.answer_callback_query(call.id, "✅ Test boshlandi!")
 
     send_next_question(call.message.chat.id, user_id)
-
+bot.send_message(
+    chat_id,
+    f"❓ <b>{q['english']}</b> so‘zining ma’nosi?",
+    reply_markup=markup,
+    parse_mode="HTML"
+)
 # ==================== STATISTIKA, ZAIF SO'ZLAR, LIDERLAR ====================
 def show_statistics(message):
     user_id = message.from_user.id
@@ -458,13 +463,11 @@ def finish_test(chat_id, user_id):
     total = len(state["questions"])
 
     c.execute("""
-    UPDATE users
-    SET total_tests = total_tests + ?, xp = xp + ?
-    WHERE user_id = ?
-    """, (total, score * 5, user_id))
-
-    conn.commit()
-
+UPDATE users
+SET total_tests = total_tests + ?, xp = xp + ?
+WHERE user_id = ?
+""", (total, score * 5, user_id))
+conn.commit()
     bot.send_message(
         chat_id,
         f"🏁 Test tugadi!\n\n✅ To‘g‘ri: {score}/{total}\n💰 Coin: +{score}"
