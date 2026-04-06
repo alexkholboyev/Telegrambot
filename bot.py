@@ -169,30 +169,19 @@ def start_test(call):
 
     send_next_question(call.message.chat.id, user_id)
 
-
-def send_next_question(chat_id, user_id):
-    state = user_states.get(user_id)
-    if not state:
-        return
-
-    if state["current"] >= len(state["questions"]):
-        finish_test(chat_id, user_id)
-        return
-
-    q = state["questions"][state["current"]]
+def send_next_question(call, q):
+    chat_id = call.message.chat.id
 
     markup = types.InlineKeyboardMarkup(row_width=2)
     for opt in q["options"]:
         markup.add(types.InlineKeyboardButton(opt, callback_data=f"answer:{opt}"))
-def send_next_question(call):
-    chat_id = call.message.chat.id  # 👈 shu MUHIM
-# 2. Savolni yuboramiz
-bot.send_message(
-    chat_id,
-    f"❓ <b>{q['english']}</b> so‘zining ma’nosi?",
-    parse_mode="HTML"
-)
 
+    bot.send_message(
+        chat_id,
+        f"❓ <b>{q['english']}</b> so‘zining ma’nosi?",
+        reply_markup=markup,
+        parse_mode="HTML"
+    )
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("answer:"))
 def handle_answer(call):
