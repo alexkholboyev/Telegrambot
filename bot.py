@@ -114,34 +114,7 @@ def show_coins(message):
     row = c.fetchone()
     coins = row[0] if row else 0
     bot.send_message(message.chat.id, f"💰 <b>Sizning XOS coinlaringiz</b>\n\n💎 Jami: <b>{coins}</b> XOS coin\n\nHar bir toʻgʻri javob = +1 coin!")
-
-# ==================== TEST ====================
-def show_levels(message):
-    markup = types.InlineKeyboardMarkup(row_width=2)
-    for lvl in ["A1", "A2", "B1", "B2", "IELTS"]:
-        markup.add(types.InlineKeyboardButton(lvl, callback_data=f"level:{lvl}"))
-    bot.send_message(message.chat.id, "📘 Qaysi <b>darajadan</b> test boshlaymiz?", reply_markup=markup, parse_mode="HTML")
-
-@bot.callback_query_handler(func=lambda call: call.data.startswith("level:"))
-def choose_section(call):
-    level = call.data.split(":")[1]
-    c.execute("SELECT DISTINCT section FROM words WHERE level = ? ORDER BY section", (level,))
-    sections = [row[0] for row in c.fetchall()]
-    if not sections:
-        bot.answer_callback_query(call.id, "Bu darajada so'z yo'q!")
-        return
-
-    markup = types.InlineKeyboardMarkup(row_width=2)
-    for sec in sections:
-        markup.add(types.InlineKeyboardButton(sec, callback_data=f"start_test:{level}:{sec}"))
-    bot.edit_message_text(
-        chat_id=call.message.chat.id,
-        message_id=call.message.message_id,
-        text=f"📘 {level} darajasi\n\nQaysi <b>bo'lim</b>dan test qilamiz?",
-        reply_markup=markup,
-        parse_mode="HTML"
-    )
-
+# ==================== TEST BOSHLASH ====================
 @bot.callback_query_handler(func=lambda call: call.data.startswith("start_test:"))
 def start_test(call):
     _, level, section = call.data.split(":")
@@ -193,6 +166,83 @@ def start_test(call):
     }
 
     bot.answer_callback_query(call.id, "✅ Test boshlandi!")
+
+    send_next_question(call.message.chat.id, user_id)
+
+
+def send_next_question(chat_id, user_id):
+    state = user_states.get(user_id)
+    if not state:
+        return
+
+    if state["current"] >= len(state["questions"]):
+        finish_test(chat_id, user_id)
+        return
+
+    q = state["questions"][state["current"]]
+
+    markup = types.InlineKeyboardMarkup(row_width=2)
+    for opt in q["options"]:
+        markup.add(types.InlineKeyboardButton(opt, callback_data=f"answer:{opt}"))
+
+    bot.send_message(
+        chat_id,
+        f"❓ <b>{q['english']}</b> so‘zining ma’nosi?",
+        reply_markup=markup,
+        parse_mode="HTML"
+    )
+
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("answer:"))
+def handle_answer(call):
+    user_id = call.from_user.id
+    state = user_states.get(user_id)
+
+    if not state or state.get("state") != "test":
+        return
+
+    answer = call.data.split(":", 1)[1]
+    q = state["questions"][state["current"]]
+
+    if answer == q["correct"]:
+        state["score"] += 1
+        c.execute("UPDATE users SET coins = coins + 1, total_correct = total_correct + 1 WHERE user_id = ?", (user_id,))
+    else:
+        state["wrong"].append(q["word_id"])
+        c.execute("""
+        INSERT INTO user_weak (user_id, word_id, error_count)
+        VALUES (?, ?, 1)
+        ON CONFLICT(user_id, word_id)
+        DO UPDATE SET error_count = error_count + 1
+        """, (user_id, q["word_id"]))
+
+    state["current"] += 1
+    conn.commit()
+    send_next_question(call.message.chat.id, user_id)
+
+
+def finish_test(chat_id, user_id):
+    state = user_states.get(user_id)
+    if not state:
+        return
+
+    score = state["score"]
+    total = len(state["questions"])
+
+    c.execute("""
+        UPDATE users
+        SET total_tests = total_tests + ?, xp = xp + ?
+        WHERE user_id = ?
+    """, (total, score * 5, user_id))
+    conn.commit()
+
+    bot.send_message(
+        chat_id,
+        f"🏁 Test tugadi!\n\n✅ To‘g‘ri: {score}/{total}\n💰 Coin: +{score}",
+        parse_mode="HTML"
+    )
+
+    user_states.pop(user_id, None)
 
     send_next_question(call.message.chat.id, user_id)
 bot.send_message(
