@@ -161,8 +161,7 @@ def start_test(call):
         return
 
     test_data = []
-    for wid, en, uz in questions_raw:
-        @bot.callback_query_handler(func=lambda call: call.data.startswith("start_test:"))
+    @bot.callback_query_handler(func=lambda call: call.data.startswith("start_test:"))
 def start_test(call):
     _, level, section = call.data.split(":")
     user_id = call.from_user.id
@@ -205,7 +204,6 @@ def start_test(call):
 
     bot.answer_callback_query(call.id, "✅ Test boshlandi!")
     send_next_question(call.message.chat.id, user_id)
-
     if user_id in user_states and user_states[user_id].get("state") == "test":
         bot.answer_callback_query(call.id, "Siz allaqachon testda turibsiz!")
         return
