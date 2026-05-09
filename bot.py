@@ -114,41 +114,48 @@ def show_coins(message):
     row = c.fetchone()
     coins = row[0] if row else 0
     bot.send_message(message.chat.id, f"💰 <b>Sizning XOS coinlaringiz</b>\n\n💎 Jami: <b>{coins}</b> XOS coin\n\nHar bir toʻgʻri javob = +1 coin!")
-# ==================== TEST BOSHLASH ====================
+# ==================== TEST BOSHLASH ===============
 @bot.callback_query_handler(func=lambda call: call.data.startswith("start_test:"))
 def start_test(call):
-    _, level, section = call.data.split(":")
+
     user_id = call.from_user.id
 
-    if user_id in user_states and user_states[user_id].get("state") == "test":
-        bot.answer_callback_query(call.id, "Siz allaqachon testda turibsiz!")
+    if user_id in user_states:
+        bot.answer_callback_query(call.id, "Siz testdasiz!")
         return
 
-    c.execute(
-        "SELECT id, english, uz_meaning FROM words WHERE level = ? AND section = ? ORDER BY RANDOM() LIMIT 10",
-        (level, section)
-    )
-    questions_raw = c.fetchall()
+    _, level, section = call.data.split(":")
 
-    if not questions_raw:
-        bot.answer_callback_query(call.id, "Bu bo'limda so'z yo'q!")
+    c.execute("""
+    SELECT id, english, uz_meaning
+    FROM words
+    WHERE level=? AND section=?
+    ORDER BY RANDOM()
+    LIMIT 10
+    """, (level, section))
+
+    rows = c.fetchall()
+
+    if not rows:
+        bot.answer_callback_query(call.id, "So'z topilmadi!")
         return
 
-    test_data = []
-    for wid, en, uz in questions_raw:
-        c.execute(
-            "SELECT uz_meaning FROM words WHERE level=? AND section=? AND id != ? ORDER BY RANDOM() LIMIT 3",
-            (level, section, wid)
-        )
-        others = [r[0] for r in c.fetchall()]
+    questions = []
 
-        while len(others) < 3:
-            others.append("❓")
+    for wid, en, uz in rows:
+        c.execute("""
+        SELECT uz_meaning
+        FROM words
+        WHERE id != ?
+        ORDER BY RANDOM()
+        LIMIT 3
+        """, (wid,))
 
-        options = [uz] + others
+        wrongs = [x[0] for x in c.fetchall()]
+        options = [uz] + wrongs
         random.shuffle(options)
 
-        test_data.append({
+        questions.append({
             "word_id": wid,
             "english": en,
             "correct": uz,
@@ -157,79 +164,20 @@ def start_test(call):
 
     user_states[user_id] = {
         "state": "test",
-        "level": level,
-        "section": section,
-        "questions": test_data,
+        "questions": questions,
         "current": 0,
         "score": 0,
         "wrong": []
     }
 
     bot.answer_callback_query(call.id, "✅ Test boshlandi!")
-
     send_next_question(call.message.chat.id, user_id)
 
-def send_next_question(call, q):
-    chat_id = call.message.chat.id
-
-    markup = types.InlineKeyboardMarkup(row_width=2)
-    for opt in q["options"]:
-        markup.add(types.InlineKeyboardButton(opt, callback_data=f"answer:{opt}"))
-
-    bot.send_message(
-        chat_id,
-        f"❓ <b>{q['english']}</b> so‘zining ma’nosi?",
-        reply_markup=markup,
-        parse_mode="HTML"
-    )
-
-@bot.callback_query_handler(func=lambda call: call.data.startswith("answer:"))
-def handle_answer(call):
-    user_id = call.from_user.id
-    state = user_states.get(user_id)
-
-    if not state or state.get("state") != "test":
-        return
-
-    answer = call.data.split(":", 1)[1]
-    q = state["questions"][state["current"]]
-
-    if answer == q["correct"]:
-        state["score"] += 1
-        c.execute("UPDATE users SET coins = coins + 1, total_correct = total_correct + 1 WHERE user_id = ?", (user_id,))
-    else:
-        state["wrong"].append(q["word_id"])
-        c.execute("""
-        INSERT INTO user_weak (user_id, word_id, error_count)
-        VALUES (?, ?, 1)
-        ON CONFLICT(user_id, word_id)
-        DO UPDATE SET error_count = error_count + 1
-        """, (user_id, q["word_id"]))
-
-    state["current"] += 1
-    conn.commit()
-    send_next_question(call.message.chat.id, user_id)
-
-
-def finish_test(chat_id, user_id):
-    state = user_states.get(user_id)
-    if not state:
-        return
-
-    score = state["score"]
-    total = len(state["questions"])
-
-    c.execute("""
-        UPDATE users
-        SET total_tests = total_tests + ?, xp = xp + ?
-        WHERE user_id = ?
-    """, (total, score * 5, user_id))
-    conn.commit()
-# ==================== TEST FUNKSIYALARI ====================
-from telebot import types
 
 def send_next_question(chat_id, user_id):
+
     state = user_states.get(user_id)
+
     if not state:
         return
 
@@ -238,9 +186,16 @@ def send_next_question(chat_id, user_id):
         return
 
     q = state["questions"][state["current"]]
+
     markup = types.InlineKeyboardMarkup(row_width=2)
+
     for opt in q["options"]:
-        markup.add(types.InlineKeyboardButton(opt, callback_data=f"answer:{opt}"))
+        markup.add(
+            types.InlineKeyboardButton(
+                opt,
+                callback_data=f"answer:{opt}"
+            )
+        )
 
     bot.send_message(
         chat_id,
@@ -249,58 +204,76 @@ def send_next_question(chat_id, user_id):
         parse_mode="HTML"
     )
 
+
 @bot.callback_query_handler(func=lambda call: call.data.startswith("answer:"))
 def handle_answer(call):
+
     user_id = call.from_user.id
     state = user_states.get(user_id)
+
     if not state:
         return
 
-    answer = call.data.split(":")[1]
-    current_q = state["questions"][state["current"]]
+    answer = call.data.split(":", 1)[1]
+    q = state["questions"][state["current"]]
 
-    # javobni tekshirish
-    correct = answer == current_q["correct"]
-    state["answers"].append({"question": current_q["english"], "your_answer": answer, "correct": correct})
+    if answer == q["correct"]:
+        state["score"] += 1
+
+        c.execute("""
+        UPDATE users
+        SET coins = coins + 1,
+            total_correct = total_correct + 1
+        WHERE user_id = ?
+        """, (user_id,))
+    else:
+        state["wrong"].append(q["word_id"])
+
+        c.execute("""
+        INSERT INTO user_weak
+        (user_id, word_id, error_count)
+        VALUES (?, ?, 1)
+        ON CONFLICT(user_id, word_id)
+        DO UPDATE SET error_count = error_count + 1
+        """, (user_id, q["word_id"]))
 
     state["current"] += 1
-    chat_id = call.message.chat.id
-    bot.answer_callback_query(call.id, "✅ Javob qabul qilindi!")
+    conn.commit()
 
-    send_next_question(chat_id, user_id)
+    bot.answer_callback_query(call.id, "✅")
+    send_next_question(call.message.chat.id, user_id)
+
 
 def finish_test(chat_id, user_id):
+
     state = user_states.get(user_id)
+
     if not state:
         return
 
-    total = len(state["answers"])
-    score = sum(1 for a in state["answers"] if a["correct"])
+    score = state["score"]
+    total = len(state["questions"])
+    xp = score * 5
+
+    c.execute("""
+    UPDATE users
+    SET total_tests = total_tests + ?,
+        xp = xp + ?
+    WHERE user_id = ?
+    """, (total, xp, user_id))
+
+    conn.commit()
 
     bot.send_message(
         chat_id,
-        f"🏁 Test tugadi!\n\n✅ To‘g‘ri: {score}/{total}\n💰 Coin: +{score}",
+        f"🏁 <b>Test tugadi!</b>\n\n"
+        f"✅ To‘g‘ri: <b>{score}/{total}</b>\n"
+        f"⭐ XP: +{xp}\n"
+        f"💰 Coin: +{score}",
         parse_mode="HTML"
     )
 
     user_states.pop(user_id, None)
-
-@bot.callback_query_handler(func=lambda call: call.data.startswith("start_test:"))
-def start_test(call):
-    user_id = call.from_user.id
-    if user_id in user_states and user_states[user_id].get("state") == "test":
-        bot.answer_callback_query(call.id, "Siz allaqachon testda turibsiz!")
-        return
-
-    _, level, section = call.data.split(":")
-    c.execute("SELECT english, correct, options FROM questions WHERE level=? AND section=?", (level, section))
-    questions_raw = c.fetchall()
-    questions = [{"english": en, "correct": correct, "options": json.loads(opts)} for en, correct, opts in questions_raw]
-
-    user_states[user_id] = {"state": "test", "current": 0, "questions": questions, "answers": []}
-    chat_id = call.from_user.id
-    bot.answer_callback_query(call.id, "✅ Test boshlandi!")
-    send_next_question(chat_id, user_id)
 # ==================== STATISTIKA, ZAIF SO'ZLAR, LIDERLAR ====================
 def show_statistics(message):
     user_id = message.from_user.id
